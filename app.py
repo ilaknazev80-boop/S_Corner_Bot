@@ -112,10 +112,13 @@ async def generate_plan(sport: str, characteristics: str, goal: str) -> str:
         else:
             return f"⚠️ Ошибка API: {response.status_code}"
 
-# Создаем Telegram Application
+# Создаем Telegram Application (ВАЖНО: initialize=True)
 telegram_app = Application.builder().token(TELEGRAM_TOKEN).build()
 telegram_app.add_handler(CommandHandler("start", start))
 telegram_app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+
+# Инициализируем приложение
+telegram_app.initialize()
 
 # Webhook обработчик
 async def webhook(request: Request):
@@ -129,10 +132,10 @@ async def webhook(request: Request):
         return Response(status_code=200)
 
 async def health(request: Request):
-    return JSONResponse({"status": "ok"})
+    return JSONResponse({"status": "ok", "message": "S_Corner Bot is running!"})
 
 async def homepage(request: Request):
-    return JSONResponse({"message": "S_Corner Bot is running!"})
+    return JSONResponse({"message": "S_Corner Bot is alive! Use Telegram to interact."})
 
 # Создаем Starlette приложение
 app = Starlette(debug=False)
@@ -150,7 +153,6 @@ async def setup_webhook():
     else:
         print(f"❌ Ошибка установки webhook")
 
-# Запускаем установку webhook при старте
 @app.on_event("startup")
 async def on_startup():
     await setup_webhook()
