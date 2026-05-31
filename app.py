@@ -98,19 +98,20 @@ async def generate_plan(sport: str, characteristics: str, goal: str) -> str:
                 "Content-Type": "application/json"
             },
             json={
-                "model": "google/gemma-2-2b-it:free",
+                "model": "microsoft/phi-3-mini-128k:free",  # ← МЕНЯЙ ЗДЕСЬ
                 "messages": [{"role": "user", "content": prompt}],
                 "temperature": 0.7,
-                "max_tokens": 2000
-            },
-            timeout=30.0
+                "max_tokens": 1500,
+                "timeout": 30.0
+            }
         )
         
         if response.status_code == 200:
             data = response.json()
             return data["choices"][0]["message"]["content"]
         else:
-            return f"⚠️ Ошибка API: {response.status_code}"
+            print(f"Ошибка API: {response.status_code} - {response.text}")
+            return f"⚠️ Ошибка API: {response.status_code}\n\nПопробуйте позже или сообщите разработчику."
 
 # Создаем Telegram Application
 telegram_app = Application.builder().token(TELEGRAM_TOKEN).build()
