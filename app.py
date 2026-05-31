@@ -1,5 +1,4 @@
 import os
-import json
 import httpx
 from telegram import Update, ReplyKeyboardMarkup
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
@@ -8,14 +7,17 @@ from starlette.responses import JSONResponse, Response
 from starlette.requests import Request
 import uvicorn
 
+# Получаем ключи из переменных окружения
 OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY")
 TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN")
 
 if not OPENROUTER_API_KEY or not TELEGRAM_TOKEN:
-    raise ValueError("Ошибка: не заданы переменные окружения")
+    raise ValueError("Ошибка: не заданы переменные окружения OPENROUTER_API_KEY и TELEGRAM_TOKEN")
 
+# Хранилище сессий пользователей
 user_sessions = {}
 
+# --- Обработчики команд Telegram ---
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
     user_sessions[chat_id] = {"step": 1, "sport": "", "characteristics": "", "goal": ""}
@@ -113,18 +115,18 @@ async def generate_plan(sport: str, characteristics: str, goal: str) -> str:
         else:
             return f"⚠️ Ошибка API: {response.status_code}"
 
-# Создаем приложение Telegram
-application = Application.builder().token(TELEGRAM_TOKEN).build()
-application.add_handler(CommandHandler("start", start))
-application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+# --- Создаем Telegram Application ---
+telegram_app = Application.builder().token(TELEGRAM_TOKEN).build()
+telegram_app.add_handler(CommandHandler("start", start))
+telegram_app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
-# Webhook обработчик
+# --- Webhook обработчик ---
 async def webhook(request: Request):
     """Обработка входящих запросов от Telegram"""
     try:
         body = await request.json()
-        update = Update.de_json(body, application.bot)
-        await application.process_update(update)
+        update = Update.de_json(body, telegram_app.bot)
+        await telegram_app.process_update(update)
         return Response(status_code=200)
     except Exception as e:
         print(f"Ошибка webhook: {e}")
@@ -134,24 +136,24 @@ async def health(request: Request):
     return JSONResponse({"status": "ok", "message": "S_Corner Bot is running!"})
 
 async def homepage(request: Request):
-    return JSONResponse({"message": "S_Corner Bot is alive! Use Telegram bot to interact."})
+    return JSONResponse({"message": "S_Corner Bot is alive! Use Telegram to interact."})
 
-# Создаем Starlette приложение
+# --- Создаем Starlette приложение ---
 starlette_app = Starlette(debug=False)
 starlette_app.add_route("/", homepage)
 starlette_app.add_route("/health", health)
 starlette_app.add_route(f"/webhook/{TELEGRAM_TOKEN}", webhook, methods=["POST"])
 
-# При запуске устанавливаем webhook
+# --- Установка webhook при запуске ---
 async def setup_webhook():
     """Устанавливаем webhook при старте"""
     webhook_url = f"https://s-corner-bot.onrender.com/webhook/{TELEGRAM_TOKEN}"
     
     # Удаляем старый webhook
-    await application.bot.delete_webhook()
+    await telegram_app.bot.delete_webhook()
     
     # Устанавливаем новый
-    result = await application.bot.set_webhook(webhook_url)
+    result = await telegram_app.bot.set_webhook(webhook_url)
     if result:
         print(f"✅ Webhook успешно установлен: {webhook_url}")
     else:
@@ -159,11 +161,17 @@ async def setup_webhook():
     
     print("🤖 Бот S_Corner запущен через webhook!")
 
+# --- Точка входа ---
 if __name__ == "__main__":
-    # Запускаем установку webhook в фоне
     import asyncio
-    asyncio.run(setup_webhook())
+    
+    # Создаем новый event loop
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    
+    # Устанавливаем webhook
+    loop.run_until_complete(setup_webhook())
     
     # Запускаем веб-сервер
     port = int(os.environ.get("PORT", 8080))
-    uvicorn.run(starlette_app, host="0.0.0.0", port=port) 
+    uvicorn.run(starlette_app, host="0.0.0.0", port=port)
