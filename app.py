@@ -98,7 +98,7 @@ async def generate_plan(sport: str, characteristics: str, goal: str) -> str:
                 "Content-Type": "application/json"
             },
             json={
-                "model": "microsoft/phi-3-mini-128k:free",  # ← МЕНЯЙ ЗДЕСЬ
+                "model": "model": "openrouter/free",  # ← МЕНЯЙ ЗДЕСЬ
                 "messages": [{"role": "user", "content": prompt}],
                 "temperature": 0.7,
                 "max_tokens": 1500,
