@@ -98,7 +98,7 @@ async def generate_plan(sport: str, characteristics: str, goal: str) -> str:
                 "Content-Type": "application/json"
             },
             json={
-                "model": "deepseek/deepseek-chat-v3:free",
+                "model": "google/gemma-2-2b-it:free",
                 "messages": [{"role": "user", "content": prompt}],
                 "temperature": 0.7,
                 "max_tokens": 2000
