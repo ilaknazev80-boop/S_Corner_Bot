@@ -1,5 +1,6 @@
 import os
 import httpx
+import asyncio
 from telegram import Update, ReplyKeyboardRemove
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 from starlette.applications import Starlette
@@ -13,80 +14,82 @@ TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN")
 if not OPENROUTER_API_KEY or not TELEGRAM_TOKEN:
     raise ValueError("Ошибка: не заданы переменные окружения")
 
-# Хранилище сессий пользователей
 user_sessions = {}
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Начало диалога"""
     chat_id = update.effective_chat.id
     user_sessions[chat_id] = {
         "step": 1,
+        "sport": "",
         "characteristics": "",
         "level": "",
         "goal": ""
     }
     
     await update.message.reply_text(
-        "🏋️ *Привет! Я S_Corner Bot — твой персональный AI-тренер*\n\n"
-        "Расскажи о себе, чтобы я мог составить идеальный план тренировок.\n\n"
-        "_Напиши свой возраст, вес, рост:_\n"
-        "Пример: `25 лет, 75 кг, 180 см`",
+        "🏋️ *Привет! Я S_Corner Bot — твой AI-тренер*\n\n"
+        "📝 *Шаг 1:* Каким видом спорта занимаешься?\n"
+        "Пример: бег, плавание, фитнес, бокс, йога",
         parse_mode="Markdown",
         reply_markup=ReplyKeyboardRemove()
     )
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Обработка всех сообщений через AI"""
     chat_id = update.effective_chat.id
-    text = update.message.text
+    text = update.message.text.strip()
     
-    # Если сессии нет — начинаем сначала
     if chat_id not in user_sessions:
         await start(update, context)
         return
     
     session = user_sessions[chat_id]
     
-    # Шаг 1: Характеристики
+    # Шаг 1: Вид спорта
     if session["step"] == 1:
-        session["characteristics"] = text
+        session["sport"] = text
         session["step"] = 2
         await update.message.reply_text(
-            "📊 *Какой у тебя уровень подготовки?*\n\n"
-            "Напиши: `новичок`, `средний` или `продвинутый`\n\n"
-            "_Также можешь описать свой опыт подробнее_",
+            "📊 *Шаг 2:* Твои характеристики\n"
+            "Возраст, вес, рост\n"
+            "Пример: 30 лет, 75 кг, 180 см",
             parse_mode="Markdown"
         )
         return
     
-    # Шаг 2: Уровень подготовки
+    # Шаг 2: Характеристики
     if session["step"] == 2:
-        session["level"] = text
+        session["characteristics"] = text
         session["step"] = 3
         await update.message.reply_text(
-            "🎯 *Какая у тебя цель?*\n\n"
-            "Например:\n"
-            "• Похудеть на 5 кг\n"
-            "• Набрать мышечную массу\n"
-            "• Улучшить выносливость\n"
-            "• Подготовиться к марафону\n\n"
-            "_Напиши свою цель подробно_",
+            "📈 *Шаг 3:* Уровень подготовки\n"
+            "новичок / средний / продвинутый",
             parse_mode="Markdown"
         )
         return
     
-    # Шаг 3: Цель → Генерируем план
+    # Шаг 3: Уровень
     if session["step"] == 3:
+        session["level"] = text
+        session["step"] = 4
+        await update.message.reply_text(
+            "🎯 *Шаг 4:* Твоя цель\n"
+            "Примеры: похудеть, набрать массу, улучшить выносливость",
+            parse_mode="Markdown"
+        )
+        return
+    
+    # Шаг 4: Генерация плана
+    if session["step"] == 4:
         session["goal"] = text
         
         await update.message.reply_text(
-            "🧠 *Генерирую персональный план тренировок...*\n"
-            "⏱️ Обычно это занимает 10-15 секунд",
+            "🧠 *Составляю план...*\n"
+            "Подожди 10-20 секунд ⏱️",
             parse_mode="Markdown"
         )
         
-        # Генерируем план через AI
         plan = await generate_workout_plan(
+            session["sport"],
             session["characteristics"],
             session["level"],
             session["goal"]
@@ -94,146 +97,116 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         await update.message.reply_text(plan, parse_mode="Markdown")
         
-        # Предлагаем продолжить общение с AI
         await update.message.reply_text(
-            "💬 *Теперь ты можешь задавать любые вопросы о тренировках, питании или технике упражнений!*\n\n"
-            "Просто напиши, что хочешь узнать, и я помогу.\n\n"
-            "_Например:_\n"
-            "• Как правильно делать приседания?\n"
-            "• Что есть перед тренировкой?\n"
-            "• Составь тренировку на грудь и спину\n"
-            "• Как убрать боль в коленях?",
+            "💬 *Теперь можешь задавать любые вопросы о спорте и тренировках!*\n\n"
+            "Просто напиши свой вопрос.",
             parse_mode="Markdown"
         )
         
-        # Сбрасываем шаг, но не удаляем сессию — теперь бот в свободном режиме
         session["step"] = 0
         return
     
-    # Шаг 0: Свободный режим — отвечаем на любые вопросы через AI
+    # Свободный режим
     if session["step"] == 0:
-        await update.message.reply_text(
-            "🤔 *Думаю...*\n",
-            parse_mode="Markdown"
-        )
+        msg = await update.message.reply_text("🤔 *Думаю...*", parse_mode="Markdown")
         
         answer = await ask_ai_free(text, session)
-        await update.message.reply_text(answer, parse_mode="Markdown")
+        
+        await msg.edit_text(answer, parse_mode="Markdown")
         return
 
 async def ask_ai_free(question: str, session: dict) -> str:
-    """Свободный диалог с AI на основе контекста пользователя"""
-    prompt = f"""Ты — профессиональный фитнес-тренер S_Corner. У тебя есть пользователь со следующими данными:
+    prompt = f"""Фитнес-тренер. Данные пользователя:
+Спорт: {session.get('sport', '?')}
+Цель: {session.get('goal', '?')}
+Уровень: {session.get('level', '?')}
 
-Характеристики: {session.get('characteristics', 'не указаны')}
-Уровень подготовки: {session.get('level', 'не указан')}
-Цель: {session.get('goal', 'не указана')}
+Вопрос: {question}
 
-Пользователь задает вопрос: "{question}"
-
-Требования к ответу:
-- Отвечай на РУССКОМ языке
-- Будь дружелюбным и мотивирующим
-- Давай практические советы
-- Если вопрос не про спорт/здоровье — вежливо направь в тему
-
-Ответ:"""
+Ответь кратко (2-3 предложения) на русском, дружелюбно, по делу."""
     
-    async with httpx.AsyncClient(timeout=45.0) as client:
-        response = await client.post(
-            "https://openrouter.ai/api/v1/chat/completions",
-            headers={
-                "Authorization": f"Bearer {OPENROUTER_API_KEY}",
-                "Content-Type": "application/json",
-                "HTTP-Referer": "https://s-corner-bot.onrender.com",
-                "X-Title": "S_Corner_Training_Bot"
-            },
-            json={
-                "model": "openrouter/free",
-                "messages": [{"role": "user", "content": prompt}],
-                "temperature": 0.8,
-                "max_tokens": 2000
-            }
-        )
-        
-        if response.status_code == 200:
-            data = response.json()
-            return data["choices"][0]["message"]["content"]
-        else:
-            return f"⚠️ Ошибка: {response.status_code}\nПопробуй переформулировать вопрос."
+    try:
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            response = await client.post(
+                "https://openrouter.ai/api/v1/chat/completions",
+                headers={
+                    "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+                    "Content-Type": "application/json",
+                    "HTTP-Referer": "https://s-corner-bot.onrender.com",
+                    "X-Title": "S_Corner_Training_Bot"
+                },
+                json={
+                    "model": "openrouter/free",
+                    "messages": [{"role": "user", "content": prompt}],
+                    "temperature": 0.7,
+                    "max_tokens": 300
+                }
+            )
+            
+            if response.status_code == 200:
+                data = response.json()
+                return data["choices"][0]["message"]["content"]
+            else:
+                return "⚠️ Ошибка API. Попробуй еще раз."
+    except httpx.TimeoutException:
+        return "⏰ Таймаут. Повтори вопрос проще или чуть позже."
+    except Exception:
+        return "⚠️ Ошибка. Попробуй еще раз."
 
-async def generate_workout_plan(characteristics: str, level: str, goal: str) -> str:
-    """Генерация тренировочного плана на неделю"""
-    prompt = f"""Ты — профессиональный фитнес-тренер S_Corner с 10-летним опытом.
+async def generate_workout_plan(sport: str, characteristics: str, level: str, goal: str) -> str:
+    prompt = f"""Фитнес-тренер. Составь план на неделю для:
+Спорт: {sport}
+Данные: {characteristics}
+Уровень: {level}
+Цель: {goal}
 
-Данные пользователя:
-- Характеристики: {characteristics}
-- Уровень подготовки: {level}
-- Цель: {goal}
+Формат:
+## 🗓️ План ({sport})
+**ПН:** упражнения
+**ВТ:** отдых/легкая
+**СР:** упражнения
+**ЧТ:** отдых
+**ПТ:** упражнения
+**СБ:** длительная
+**ВС:** отдых
 
-Составь ПЕРСОНАЛЬНЫЙ ТРЕНИРОВОЧНЫЙ ПЛАН НА НЕДЕЛЮ.
-
-ТРЕБОВАНИЯ:
-- Ответь только на РУССКОМ языке
-- Используй Markdown: **жирный**, *курсив*, • списки
-- Распиши каждый день недели (ПН, ВТ, СР, ЧТ, ПТ, СБ, ВС)
-- Укажи: какие упражнения, сколько подходов и повторений
-- Добавь дни отдыха и восстановления
-- Включи рекомендации по питанию
-- Добавь мотивационную фразу в конце
-
-СТРУКТУРА ОТВЕТА:
-## 🗓️ Твоя недельная программа
-**Уровень:** {level}
-**Цель:** {goal}
-
-### Понедельник
-• Упражнение 1 — 3x10
-• ...
-
-### Вторник
-• ...
-
-... и так до воскресенья
-
-## 🍎 Рекомендации по питанию
-- Совет 1
-- Совет 2
+## 🍎 Питание
+2-3 пункта
 
 ## 💪 Мотивация
-Твоя мотивационная фраза
+Кратко (2-3 предложения) на русском"""
 
-Напиши план тренировок:"""
-    
-    async with httpx.AsyncClient(timeout=45.0) as client:
-        response = await client.post(
-            "https://openrouter.ai/api/v1/chat/completions",
-            headers={
-                "Authorization": f"Bearer {OPENROUTER_API_KEY}",
-                "Content-Type": "application/json",
-                "HTTP-Referer": "https://s-corner-bot.onrender.com",
-                "X-Title": "S_Corner_Training_Bot"
-            },
-            json={
-                "model": "openrouter/free",
-                "messages": [{"role": "user", "content": prompt}],
-                "temperature": 0.7,
-                "max_tokens": 2000
-            }
-        )
-        
-        if response.status_code == 200:
-            data = response.json()
-            return data["choices"][0]["message"]["content"]
-        else:
-            return f"⚠️ Ошибка генерации плана: {response.status_code}\n\nПопробуй позже."
+    try:
+        async with httpx.AsyncClient(timeout=25.0) as client:
+            response = await client.post(
+                "https://openrouter.ai/api/v1/chat/completions",
+                headers={
+                    "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+                    "Content-Type": "application/json",
+                    "HTTP-Referer": "https://s-corner-bot.onrender.com",
+                    "X-Title": "S_Corner_Training_Bot"
+                },
+                json={
+                    "model": "openrouter/free",
+                    "messages": [{"role": "user", "content": prompt}],
+                    "temperature": 0.7,
+                    "max_tokens": 1000
+                }
+            )
+            
+            if response.status_code == 200:
+                data = response.json()
+                return data["choices"][0]["message"]["content"]
+            else:
+                return "⚠️ Ошибка генерации плана. Попробуй /start заново."
+    except Exception:
+        return "⚠️ Ошибка. Попробуй /start еще раз."
 
-# --- Telegram Application ---
+# --- Остальной код (Telegram Application, Webhook, Starlette) ---
 telegram_app = Application.builder().token(TELEGRAM_TOKEN).build()
 telegram_app.add_handler(CommandHandler("start", start))
 telegram_app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
-# --- Webhook ---
 async def webhook(request: Request):
     try:
         body = await request.json()
@@ -250,7 +223,6 @@ async def health(request: Request):
 async def homepage(request: Request):
     return JSONResponse({"message": "S_Corner Bot is running!"})
 
-# --- Starlette приложение ---
 app = Starlette(debug=False)
 app.add_route("/", homepage)
 app.add_route("/health", health)
@@ -261,12 +233,12 @@ async def setup_webhook():
     await telegram_app.bot.delete_webhook()
     result = await telegram_app.bot.set_webhook(webhook_url)
     if result:
-        print(f"✅ Webhook успешно установлен: {webhook_url}")
+        print(f"✅ Webhook: {webhook_url}")
     else:
-        print(f"❌ Ошибка установки webhook")
+        print(f"❌ Ошибка webhook")
     await telegram_app.initialize()
 
 @app.on_event("startup")
 async def on_startup():
     await setup_webhook()
-    print("🤖 Бот S_Corner запущен через webhook!")
+    print("🤖 Бот S_Corner запущен!")
