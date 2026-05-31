@@ -139,10 +139,10 @@ async def homepage(request: Request):
     return JSONResponse({"message": "S_Corner Bot is alive! Use Telegram to interact."})
 
 # --- Создаем Starlette приложение ---
-starlette_app = Starlette(debug=False)
-starlette_app.add_route("/", homepage)
-starlette_app.add_route("/health", health)
-starlette_app.add_route(f"/webhook/{TELEGRAM_TOKEN}", webhook, methods=["POST"])
+app = Starlette(debug=False)
+app.add_route("/", homepage)
+app.add_route("/health", health)
+app.add_route(f"/webhook/{TELEGRAM_TOKEN}", webhook, methods=["POST"])
 
 # --- Установка webhook при запуске ---
 async def setup_webhook():
@@ -174,4 +174,4 @@ if __name__ == "__main__":
     
     # Запускаем веб-сервер
     port = int(os.environ.get("PORT", 8080))
-    uvicorn.run(starlette_app, host="0.0.0.0", port=port)
+    uvicorn.run(app, host="0.0.0.0", port=port)
