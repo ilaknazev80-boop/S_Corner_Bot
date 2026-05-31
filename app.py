@@ -112,13 +112,10 @@ async def generate_plan(sport: str, characteristics: str, goal: str) -> str:
         else:
             return f"⚠️ Ошибка API: {response.status_code}"
 
-# Создаем Telegram Application (ВАЖНО: initialize=True)
+# Создаем Telegram Application
 telegram_app = Application.builder().token(TELEGRAM_TOKEN).build()
 telegram_app.add_handler(CommandHandler("start", start))
 telegram_app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
-
-# Инициализируем приложение
-telegram_app.initialize()
 
 # Webhook обработчик
 async def webhook(request: Request):
@@ -152,6 +149,7 @@ async def setup_webhook():
         print(f"✅ Webhook успешно установлен: {webhook_url}")
     else:
         print(f"❌ Ошибка установки webhook")
+    await telegram_app.initialize()  # ← ИНИЦИАЛИЗАЦИЯ ЗДЕСЬ!
 
 @app.on_event("startup")
 async def on_startup():
