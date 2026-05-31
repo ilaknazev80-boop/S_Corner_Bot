@@ -81,37 +81,62 @@ async def generate_plan(sport: str, characteristics: str, goal: str) -> str:
 Цель: {goal}
 
 Составь персонализированный план тренировок. ТРЕБОВАНИЯ:
-- Ответь ТОЛЬКО на РУССКОМ языке
-- Используй Markdown: **жирный**, *курсив*, • списки
-- Укажи частоту тренировок (3-5 раз в неделю)
-- Распиши упражнения по конкретным дням
-- Обязательно добавь рекомендации по питанию
-- Добавь мотивационную фразу в конце
+- Ответь ТОЛЬКО на РУССКОМ языке.
+- Используй Markdown: **жирный**, *курсив*, • списки.
+- Укажи частоту тренировок (3-5 раз в неделю).
+- Распиши упражнения по конкретным дням (ПН, ВТ, СР).
+- Обязательно добавь 1-2 рекомендации по питанию и мотивационную фразу в конце.
 
-Составь план тренировок:"""
-    
-    async with httpx.AsyncClient() as client:
-        response = await client.post(
-            "https://openrouter.ai/api/v1/chat/completions",
-            headers={
-                "Authorization": f"Bearer {OPENROUTER_API_KEY}",
-                "Content-Type": "application/json"
-            },
-            json={
-                "model": "model": "openrouter/free",  # ← МЕНЯЙ ЗДЕСЬ
-                "messages": [{"role": "user", "content": prompt}],
-                "temperature": 0.7,
-                "max_tokens": 1500,
-                "timeout": 30.0
+План тренировок:"""
+
+    # Данные для запроса — строго по документации OpenRouter
+    payload = {
+        "model": "openrouter/free",  # Автоматический выбор
+        "messages": [
+            {
+                "role": "user",
+                "content": prompt
             }
-        )
-        
-        if response.status_code == 200:
-            data = response.json()
-            return data["choices"][0]["message"]["content"]
-        else:
-            print(f"Ошибка API: {response.status_code} - {response.text}")
-            return f"⚠️ Ошибка API: {response.status_code}\n\nПопробуйте позже или сообщите разработчику."
+        ],
+        "temperature": 0.7,
+        "max_tokens": 1500
+    }
+
+    # Эти заголовки обязательны для бесплатных моделей! [citation:5]
+    headers = {
+        "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+        "Content-Type": "application/json",
+        "HTTP-Referer": "https://s-corner-bot.onrender.com",  # Твой URL
+        "X-Title": "S_Corner_Training_Bot"  # Название твоего бота
+    }
+
+    async with httpx.AsyncClient(timeout=45.0) as client:  # Увеличим таймаут
+        try:
+            response = await client.post(
+                "https://openrouter.ai/api/v1/chat/completions",
+                headers=headers,
+                json=payload  # Используем json=, а не data=
+            )
+            
+            # Распечатаем информацию об ошибке в логах Render
+            print(f"OpenRouter Response Status: {response.status_code}")
+            
+            if response.status_code == 200:
+                data = response.json()
+                # Извлекаем ответ
+                if data and data.get("choices") and len(data["choices"]) > 0:
+                    return data["choices"][0]["message"]["content"]
+                else:
+                    return "❌ Ошибка: Неожиданный формат ответа от AI."
+            else:
+                # Если ошибка — выводим её в ответе пользователю и в логи
+                error_detail = response.text
+                print(f"OpenRouter Error Body: {error_detail}") # Это будет видно в логах Render
+                return f"⚠️ Ошибка API ({response.status_code}). Детали смотри в логах сервера."
+                
+        except Exception as e:
+            print(f"Exception in generate_plan: {e}")
+            return f"⚠️ Ошибка соединения с AI: {str(e)}"
 
 # Создаем Telegram Application
 telegram_app = Application.builder().token(TELEGRAM_TOKEN).build()
